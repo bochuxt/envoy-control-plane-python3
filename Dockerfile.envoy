@@ -1,0 +1,13 @@
+ARG IMAGE_TAG='v1.14.1'
+#latest
+FROM envoyproxy/envoy:v1.14.1
+#${IMAGE_TAG}
+#docker pull envoyproxy/envoy:v1.14.1
+RUN mkdir -p /var/log/envoy
+EXPOSE 80 443 8080 9901
+CMD envoy \
+    -c ${ENVOY_CONFIG} \
+    --service-zone ${ENVOY_ZONE} \
+    --log-level ${ENVOY_LOGLEVEL} \
+    --log-path /var/log/envoy/application.log \
+    --log-format '{"time": "%Y-%m-%d %T.%e", "level": "%l", "type": "%n", "message": "%v"}'

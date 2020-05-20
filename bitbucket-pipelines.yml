@@ -1,0 +1,122 @@
+image: python:3.8
+
+.install_docker_compose: &install_docker_compose |
+  pip install --no-cache-dir --upgrade pip
+  pip install --no-cache-dir --upgrade -r requirements-dev.txt
+  pip install docker-compose
+
+options:
+  docker: true
+
+pipelines:
+  custom:
+    publish-docs:
+      - step:
+          name: Documentation update
+          script:
+            - pip install -r requirements-dev.txt
+            - git clone git@bitbucket.org:vsyrakis/vsyrakis.bitbucket.io.git
+            - mkdocs build
+            - rm -rf vsyrakis.bitbucket.io/sovereign-draft
+            - mv site vsyrakis.bitbucket.io/sovereign-draft
+            - cd vsyrakis.bitbucket.io
+            - git add -A
+            - git status
+            - git config user.email "vsyrakis@atlassian.com"
+            - git config user.name "Vasilios Syrakis"
+            - git commit -m "Documentation automatically updated by Sovereign pipeline"
+            - git push
+  default:
+    - parallel: &unit
+        - step:
+            name: Create pip cache
+            caches: [pip]
+            script:
+              - *install_docker_compose
+        - step:
+            name: Run pylint
+            script:
+              - pip install pylint
+              - pip install --upgrade -r requirements.txt
+              - make lint
+        - step:
+            name: Unit tests
+            script:
+              - make before-build
+              - make unit-local
+            after-script:
+              - make after-build
+    - parallel: &acceptance
+        - step:
+            name: envoy-1.8.0
+            caches: [pip]
+            script:
+              - *install_docker_compose
+              - ENVOY_VERSION=v1.8.0 make test-envoy-version
+        - step:
+            name: envoy-1.9.1
+            caches: [pip]
+            script:
+              - *install_docker_compose
+              - ENVOY_VERSION=v1.9.1 make test-envoy-version
+        - step:
+            name: envoy-1.10.0
+            caches: [pip]
+            script:
+              - *install_docker_compose
+              - ENVOY_VERSION=v1.10.0 make test-envoy-version
+        - step:
+            name: envoy-1.11.2
+            caches: [pip]
+            script:
+              - *install_docker_compose
+              - ENVOY_VERSION=v1.11.2 make test-envoy-version
+        - step:
+            name: envoy-1.12.2
+            caches: [pip]
+            script:
+              - *install_docker_compose
+              - ENVOY_VERSION=v1.12.2 make test-envoy-version
+        - step:
+            name: envoy-1.13.1
+            caches: [pip]
+            script:
+              - *install_docker_compose
+              - ENVOY_VERSION=v1.13.1 make test-envoy-version
+        - step:
+            name: envoy-1.14.1
+            caches: [pip]
+            script:
+              - *install_docker_compose
+              - ENVOY_VERSION=v1.14.1 make test-envoy-version
+  branches:
+    master:
+      - parallel: *unit
+      - parallel: *acceptance
+      - step:
+          name: Release to PyPI
+          script:
+            - pip install docker-compose twine
+            - make release
+      - step:
+          name: Documentation update
+          script:
+            - pip install -r requirements-dev.txt
+            - git clone git@bitbucket.org:vsyrakis/vsyrakis.bitbucket.io.git
+            - mkdocs build
+            - rm -rf vsyrakis.bitbucket.io/sovereign/docs
+            - mv site vsyrakis.bitbucket.io/sovereign/docs
+            - cd vsyrakis.bitbucket.io
+            - git add -A
+            - git status
+            - git config user.email "vsyrakis@atlassian.com"
+            - git config user.name "Vasilios Syrakis"
+            - git commit -m "Documentation automatically updated by Sovereign pipeline"
+            - git push
+      - step:
+          name: Mirror to github
+          script:
+            - git remote add github git@github.com:cetanu/sovereign.git
+            - git fetch --unshallow github
+            - git branch --set-upstream-to master
+            - git push --set-upstream github master

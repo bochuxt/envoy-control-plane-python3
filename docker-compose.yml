@@ -1,0 +1,76 @@
+version: '2.3'
+
+services:
+  envoy-control-plane:
+    container_name: controlplane
+    image: '${DOCKER_IMAGE:-docker.atl-paas.net/atlassian/edge/envoy-controlplane}:${DOCKER_TAG:-dev}'
+    build:
+      context: .
+      dockerfile: '${DOCKER_FILE:-Dockerfile.sovereign}'
+    environment:
+      SOVEREIGN_HOST: '0.0.0.0'
+      SOVEREIGN_PORT: '8080'
+      SOVEREIGN_DEBUG: 'yes'
+      # This key is for local development only
+      SOVEREIGN_ENCRYPTION_KEY: 'KjDxQrHuNrPRHICv1Qef6Sr_XHxsv7oarJdwB98R2wk='
+      # Example passwords
+      SOVEREIGN_AUTH_PASSWORDS: 'helloworld,2398yud32r9y#@8d23rydr398d2r39y@@2rd39nd2%%r3y98!!!!'
+      SOVEREIGN_ENVIRONMENT_TYPE: local
+      SOVEREIGN_CONFIG: file:///proj/test/config/config.yaml
+    ports:
+      - 80:8080
+    expose:
+      - 80
+
+
+  envoy:
+    container_name: envoy
+    build:
+      context: .
+      dockerfile: Dockerfile.envoy
+      args:
+        IMAGE_TAG: "${IMAGE_TAG:-latest}"
+    links:
+      - envoy-control-plane
+    volumes:
+      - .:/app
+      - ./logs:/var/log/envoy
+    working_dir: /app
+    expose:
+      - 9901
+    environment:
+      ENVOY_LOGLEVEL: info
+      ENVOY_CONFIG: /app/test/config/bootstrap_rest.yaml
+      ENVOY_ZONE: us-east-1
+
+
+  tavern-unit:
+    build:
+      context: .
+      dockerfile: Dockerfile.tavern
+    command: pytest -p no:tavern --tb=short --ignore=test/acceptance --junitxml=/proj/test-reports/unit.xml --durations=5 --spec
+    volumes:
+      - ./test-reports:/proj/test-reports
+    environment: &test_env_vars
+      CONFIG_LOADER_TEST: '{"hello": "world"}'
+      SOVEREIGN_ENVIRONMENT_TYPE: local
+      SOVEREIGN_CONFIG: file:///proj/test/config/config.yaml
+
+
+  tavern-acceptance:
+    build:
+      context: .
+      dockerfile: Dockerfile.tavern
+    command: >
+      pytest -vv
+      --tb=short
+      --ignore=test/unit
+      --junitxml=/proj/test-reports/acceptance.xml
+      --spec
+      -m "${PYTEST_MARK:-not v1_9_0}"
+    volumes:
+      - ./test-reports:/proj/test-reports
+    environment: *test_env_vars
+    links:
+      - envoy-control-plane
+      - envoy
